@@ -67,7 +67,7 @@ def cleanData(
     modified_ds = modified_ds.assign_coords(
         lead_time=lead_time_hours.astype("timedelta64[h]").astype("timedelta64[ns]")
     )
-    print("lead", modified_ds.coords["lead_time"].values)
+    # print("lead", modified_ds.coords["lead_time"].values)
     # print("feature", modified_ds["mean_sea_level_pressure"].values)
     
     # 3. Calculate 1D Init Times
