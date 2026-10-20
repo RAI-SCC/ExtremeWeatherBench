@@ -1634,27 +1634,3 @@ def convert_init_and_valid_time_to_lead_time(da: xr.DataArray) -> xr.DataArray:
         compat="equals",
         join="outer",
     )
-
-def convert_init_and_valid_time_to_lead_and_init_time(da: xr.DataArray) -> xr.DataArray:
-    """Convert the combination of init_time and valid_time dimension to a lead_time dimension.
-
-    Args:
-        da: The dataarray to convert with init_time and valid_time dimensions.
-
-    Returns:
-        The dataarray with a lead_time (and init_time) dimension.
-    """
-    lead_time = xr.DataArray(
-        da.valid_time, coords={"valid_time": da.valid_time}
-    ) - xr.DataArray(da.init_time, coords={"init_time": da.init_time})
-    da = da.assign_coords(lead_time=lead_time)
-    return xr.concat(
-        [
-            da.sel(init_time=init_t).swap_dims({"valid_time": "lead_time"})
-            for init_t in da.init_time
-        ],
-        "init_time",
-        coords="different",
-        compat="equals",
-        join="outer",
-    )
