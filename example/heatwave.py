@@ -79,7 +79,15 @@ eval_objects = [
             ewb.metrics.RootMeanSquaredError(
                 forecast_variable="2m_temperature",
                 target_variable="2m_temperature"
-            )
+            ),
+            ewb.metrics.MSESubEnsemble(
+                forecast_variable="2m_temperature",
+                target_variable="2m_temperature"
+            ),
+            ewb.metrics.RMSESubEnsemble(
+                forecast_variable="2m_temperature",
+                target_variable="2m_temperature"
+            ),
         ],
         target=inhouse_target,
         forecast=my_forecast,

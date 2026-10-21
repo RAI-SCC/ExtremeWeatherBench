@@ -2525,7 +2525,7 @@ class NLL(BaseMetric):
         selected_ensemble: Optional[int] = None,
         **kwargs: Any,
     ) -> xr.DataArray:
-        print("selected_ensemble nll:", selected_ensemble)
+        
         # 1. Identify the ensemble dimension in the forecast dataset
         possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
         active_ensemble_dim = next((dim for dim in possible_ensemble_dims if dim in forecast.dims), None)
@@ -2588,7 +2588,7 @@ class CRPS(BaseMetric):
         selected_ensemble: Optional[int]=None,
         **kwargs: Any,
     ) -> Any:
-        print("selected_ensemble crps:", selected_ensemble)
+        
         """Compute CRPS using Zamo & Naveau (2018) PWM method adapted for DataArray."""
 
         # Define common ensemble dimension names typically used in meteorological datasets
@@ -2649,7 +2649,7 @@ class SpatialFSS(BaseMetric):
         selected_ensemble: Optional[int]=None, 
         **kwargs: Any
         )-> xr.DataArray:
-        print("selected_ensemble fss:", selected_ensemble)
+        
         possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
 
         active_ensemble_dim = next((x for x in possible_ensemble_dims if x in forecast.dims), None)
@@ -2911,7 +2911,7 @@ class EnsembleHeatWaveDetectionRate(_HeatWaveBase):
         forecast_mask, actual_mask, valid, pair_valid, ens_dim = self._prepare(
             forecast, target, selected_ensemble
         )
-        print("selected_ensemble rate:", selected_ensemble)
+        
         event = actual_mask & valid
         hits = forecast_mask.astype(float).where(event)
         return self._rate(hits, pair_valid, ens_dim)
@@ -2943,7 +2943,7 @@ class EnsembleHeatWaveFalseAlarmRate(_HeatWaveBase):
         forecast_mask, actual_mask, valid, pair_valid, ens_dim = self._prepare(
             forecast, target, selected_ensemble
         )
-        print("selected_ensemble false alarm:", selected_ensemble)
+        
         non_event = (~actual_mask) & valid
         false_alarms = forecast_mask.astype(float).where(non_event)
         return self._rate(false_alarms, pair_valid, ens_dim)
@@ -2978,7 +2978,7 @@ class CoverOneSD(BaseMetric):
         Returns:
             The computed percentage coverage result.
         """
-        print("selected_ensemble cover1sd:", selected_ensemble)
+        
         percentage_cov = None
         # Define common ensemble dimension names typically used in meteorological datasets
         possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
@@ -3012,3 +3012,123 @@ class CoverOneSD(BaseMetric):
             raise ValueError("No ensemble dimension found in the forecast data.")
 
         return percentage_cov
+
+class MSESubEnsemble(BaseMetric):
+    """Compute Mean Squared Error between forecast and target using subensembles."""
+
+    def __init__(self, name: str = "MSESubEnsemble", *args, **kwargs):
+        """Initialize the MSESubEnsemble metric.
+
+        Args:
+            name: The name of the metric. Defaults to generated name.
+            *args: Additional positional arguments passed to BaseMetric.
+            **kwargs: Additional keyword arguments passed to BaseMetric.
+        """
+
+        super().__init__(name, *args, **kwargs)
+
+    def _compute_metric(
+        self,
+        forecast: xr.DataArray,
+        target: xr.DataArray,
+        selected_ensemble: Optional[int] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Compute the Mean Squared Error for the subensemble.
+
+        Args:
+            forecast: The forecast DataArray containing ensemble members.
+            target: The target DataArray.
+            selected_ensemble: Optional number of ensemble members to select.
+
+        Returns:
+            The computed Mean Squared Error result.
+        """
+       
+        
+        # Define common ensemble dimension names typically used in meteorological datasets
+        possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
+        
+        # Automatically check if any of the possible ensemble dimensions exist in the forecast data
+        active_ensemble_dim = next((dim for dim in possible_ensemble_dims if dim in forecast.dims), None)
+        
+        if active_ensemble_dim:
+            num_ensemble = forecast.sizes[active_ensemble_dim]
+            
+            if selected_ensemble is not None:
+                if num_ensemble < selected_ensemble:
+                    raise ValueError(
+                        f"Selected ensemble members {selected_ensemble} should be less than "
+                        f"or equal to available {num_ensemble} members."
+                    )
+                # Select the subset of ensemble members using the dynamically detected dimension name
+                forecast = forecast.sel({active_ensemble_dim: range(1, selected_ensemble + 1)})
+            
+            # Compute the ensemble mean after subselection
+            forecast_processed = forecast.mean(dim=active_ensemble_dim, skipna=True)
+        else:
+            # If no ensemble dimension is found, use the data as-is (deterministic)
+            forecast_processed = forecast
+
+        return scores.continuous.mse(
+            forecast_processed, target, preserve_dims=self.preserve_dims
+        )
+
+class RMSESubEnsemble(BaseMetric):
+    """Compute Root Mean Squared Error between forecast and target using subensembles."""
+
+    def __init__(self, name: str = "RMSESubEnsemble", *args, **kwargs):
+        """Initialize the RMSESubEnsemble metric.
+
+        Args:
+            name: The name of the metric. Defaults to "RMSESubEnsemble".
+            *args: Additional positional arguments passed to BaseMetric.
+            **kwargs: Additional keyword arguments passed to BaseMetric.
+        """
+        super().__init__(name, *args, **kwargs)
+
+    def _compute_metric(
+        self,
+        forecast: xr.DataArray,
+        target: xr.DataArray,
+        selected_ensemble: Optional[int] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Compute the Root Mean Square Error for the subensemble.
+
+        Args:
+            forecast: The forecast DataArray containing ensemble members.
+            target: The target DataArray.
+            selected_ensemble: Optional number of ensemble members to select.
+
+        Returns:
+            The computed Root Mean Square Error result.
+        """
+        
+        # Define common ensemble dimension names typically used in meteorological datasets
+        possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
+        
+        # Automatically check if any of the possible ensemble dimensions exist in the forecast data
+        active_ensemble_dim = next((dim for dim in possible_ensemble_dims if dim in forecast.dims), None)
+        
+        if active_ensemble_dim:
+            num_ensemble = forecast.sizes[active_ensemble_dim]
+            
+            if selected_ensemble is not None:
+                if num_ensemble < selected_ensemble:
+                    raise ValueError(
+                        f"Selected ensemble members {selected_ensemble} should be less than "
+                        f"or equal to available {num_ensemble} members."
+                    )
+                # Select the subset of ensemble members using the dynamically detected dimension name
+                forecast = forecast.sel({active_ensemble_dim: range(1, selected_ensemble + 1)})
+            
+            # Compute the ensemble mean after subselection
+            forecast_processed = forecast.mean(dim=active_ensemble_dim, skipna=True)
+        else:
+            # If no ensemble dimension is found, use the data as-is (deterministic)
+            forecast_processed = forecast
+
+        return scores.continuous.rmse(
+            forecast_processed, target, preserve_dims=self.preserve_dims
+        )
