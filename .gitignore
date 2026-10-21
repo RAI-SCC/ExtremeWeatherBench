@@ -37,3 +37,4 @@ datasets/
 logs/
 wandb/
 mlruns/
+example/
