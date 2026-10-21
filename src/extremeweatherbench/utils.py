@@ -543,31 +543,6 @@ def unstack_valid_time_pairs(
 
 
 def convert_valid_time_to_init_time(da: xr.DataArray) -> xr.DataArray:
-    """Convert the valid_time dimension to a init_time dimension.
-
-    Args:
-        da: The dataarray to convert with lead_time and valid_time dimensions.
-
-    Returns:
-        The dataarray with an init_time dimension.
-    """
-    lead_time = _lead_time_as_timedelta(da.lead_time)
-    init_time = xr.DataArray(
-        da.valid_time, coords={"valid_time": da.valid_time}
-    ) - xr.DataArray(lead_time, coords={"lead_time": da.lead_time})
-    da = da.assign_coords(init_time=init_time)
-    return xr.concat(
-        [
-            da.sel(lead_time=lead).swap_dims({"valid_time": "init_time"})
-            for lead in da.lead_time
-        ],
-        "lead_time",
-        coords="different",
-        compat="equals",
-        join="outer",
-    )
-
-def convert_valid_time_to_init_time_updated(da: xr.DataArray) -> xr.DataArray:
     """Convert the valid_time dimension to an init_time dimension.
 
     Uses inner join to retain only the true forecast initialization time
