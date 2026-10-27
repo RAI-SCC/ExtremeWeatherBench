@@ -2308,6 +2308,7 @@ class SPEDS(BaseMetric):
         gamma=0.33, 
         window_size=3,
         selected_ensemble: Optional[int] = None,
+        possible_ensemble_dims: Optional[list[str]] = None,
         name: str | None = None,
         *args,
         **kwargs
@@ -2324,6 +2325,10 @@ class SPEDS(BaseMetric):
         self.gamma = gamma
         self.window_size = window_size
         self.selected_ensemble = selected_ensemble
+        if possible_ensemble_dims is not None:
+            self.possible_ensemble_dims = possible_ensemble_dims
+        else:
+            self.possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
 
     def compute_spatial_gradients(self, data: np.ndarray) -> np.ndarray:
         """Computes smooth spatial gradients using SciPy safely, handling NaNs."""
@@ -2399,15 +2404,14 @@ class SPEDS(BaseMetric):
         if forecast.name != target.name:
             raise ValueError(f"VARIABLE MISMATCH ERROR! Forecast is '{forecast.name}' but Target is '{target.name}'.")
 
-        possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
-        active_ensemble_dim = next((x for x in possible_ensemble_dims if x in forecast.dims), None)
+        active_ensemble_dim = next((x for x in self.possible_ensemble_dims if x in forecast.dims), None)
         
         if active_ensemble_dim:
             num_ensemble = forecast[active_ensemble_dim].size
             if self.selected_ensemble is not None:
                 if num_ensemble < self.selected_ensemble:
                     raise ValueError(f"Not enough ensemble members. Found {num_ensemble}, needed {self.selected_ensemble}.")
-                forecast = forecast.sel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
+                forecast = forecast.isel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
             
             ensemble_spread_xr = self._compute_sharpness_penalty_xr(forecast, active_ensemble_dim)
             forecast_mean = forecast.mean(dim=active_ensemble_dim, skipna=True)
@@ -2517,6 +2521,7 @@ class NLL(BaseMetric):
     def __init__(
         self,
         selected_ensemble: Optional[int] = None,
+        possible_ensemble_dims: Optional[list[str]] = None,
         name: str | None = None,
         *args,
         **kwargs,
@@ -2526,6 +2531,7 @@ class NLL(BaseMetric):
         Args:
             selected_ensemble: Optional number of ensemble members to select for calculation. 
                              If None, all available ensemble members are used.
+            possible_ensemble_dims: List of possible ensemble dimension names. Defaults to a predefined list.
             name: The name of the metric. Defaults to an auto-generated name 
                   including the selected ensemble size.
             *args: Additional positional arguments passed to the base metric class.
@@ -2536,6 +2542,10 @@ class NLL(BaseMetric):
             
         super().__init__(name=name, *args, **kwargs)  
         self.selected_ensemble = selected_ensemble
+        if possible_ensemble_dims is not None:
+            self.possible_ensemble_dims = possible_ensemble_dims
+        else:
+            self.possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
 
     def _compute_metric(
         self,
@@ -2546,11 +2556,10 @@ class NLL(BaseMetric):
         """Compute Negative Log-Likelihood (NLL) assuming a Gaussian ensemble distribution."""
         
         # 1. Identify the ensemble dimension in the forecast dataset
-        possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
-        active_ensemble_dim = next((dim for dim in possible_ensemble_dims if dim in forecast.dims), None)
+        active_ensemble_dim = next((dim for dim in self.possible_ensemble_dims if dim in forecast.dims), None)
         
         if not active_ensemble_dim:
-            raise ValueError(f"No ensemble dimension found in forecast. Checked: {possible_ensemble_dims}")
+            raise ValueError(f"No ensemble dimension found in forecast. Checked: {self.possible_ensemble_dims}")
 
         # 2. Handle optional ensemble subset selection using class attribute `self.selected_ensemble`
         if self.selected_ensemble is not None:
@@ -2594,6 +2603,7 @@ class CRPS(BaseMetric):
     def __init__(
         self,
         selected_ensemble: Optional[int] = None,
+        possible_ensemble_dims: Optional[list[str]] = None,
         name: str | None = None,
         *args,
         **kwargs,
@@ -2603,6 +2613,7 @@ class CRPS(BaseMetric):
         Args:
             selected_ensemble: Optional number of ensemble members to select for calculation. 
                              If None, all available ensemble members are used.
+            possible_ensemble_dims: List of possible ensemble dimension names. Defaults to a predefined list.
             name: The name of the metric. Defaults to an auto-generated name 
                   including the selected ensemble size.
             *args: Additional positional arguments passed to the base metric class.
@@ -2612,6 +2623,10 @@ class CRPS(BaseMetric):
             name = f"CRPS_{selected_ensemble if selected_ensemble is not None else 'All'}"
         super().__init__(name=name, *args, **kwargs)  
         self.selected_ensemble = selected_ensemble
+        if possible_ensemble_dims is not None:
+            self.possible_ensemble_dims = possible_ensemble_dims
+        else:
+            self.possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
 
     def _compute_metric(
         self,
@@ -2621,11 +2636,8 @@ class CRPS(BaseMetric):
     ) -> Any:
         """Compute CRPS using Zamo & Naveau (2018) PWM method adapted for DataArray."""
         
-        # Define common ensemble dimension names typically used in meteorological datasets
-        possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
-        
         # Automatically check if any of the possible ensemble dimensions exist in the forecast data
-        active_ensemble_dim = next((dim for dim in possible_ensemble_dims if dim in forecast.dims), None)
+        active_ensemble_dim = next((dim for dim in self.possible_ensemble_dims if dim in forecast.dims), None)
         
         if active_ensemble_dim:
             total_ensemble = forecast.sizes[active_ensemble_dim]
@@ -2643,7 +2655,7 @@ class CRPS(BaseMetric):
                 )
                 
             # Subset the ensemble members
-            forecast = forecast.sel({active_ensemble_dim: range(1, n_ensemble + 1)})
+            forecast = forecast.isel({active_ensemble_dim: range(1, n_ensemble + 1)})
         else:
             raise ValueError("No ensemble dimension found in the forecast data.")
 
@@ -2691,6 +2703,7 @@ class SpatialFSS(BaseMetric):
         threshold: Union[float, xr.DataArray],
         window_size: int = 5,
         selected_ensemble: Optional[int] = None,
+        possible_ensemble_dims: Optional[list[str]] = None,
         name: str | None = None,
         *args,
         **kwargs,
@@ -2701,6 +2714,7 @@ class SpatialFSS(BaseMetric):
             threshold: The threshold value or DataArray used to binarize fields.
             window_size: The spatial neighborhood window size (in pixels). Defaults to 5.
             selected_ensemble: Optional number of ensemble members to select. Defaults to None (use all).
+            possible_ensemble_dims: List of possible ensemble dimension names. Defaults to a predefined list.
             name: The name of the metric. Defaults to an auto-generated name based on selected_ensemble.
             *args: Additional positional arguments passed to BaseMetric.
             **kwargs: Additional keyword arguments passed to BaseMetric.
@@ -2713,6 +2727,10 @@ class SpatialFSS(BaseMetric):
         self.threshold = threshold
         self.window_size = window_size
         self.selected_ensemble = selected_ensemble
+        if possible_ensemble_dims is not None:
+            self.possible_ensemble_dims = possible_ensemble_dims
+        else:
+            self.possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
 
 
     def _compute_metric(
@@ -2721,8 +2739,7 @@ class SpatialFSS(BaseMetric):
             **kwargs: Any
         ) -> xr.DataArray:
             
-            possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
-            active_ensemble_dim = next((x for x in possible_ensemble_dims if x in forecast.dims), None)
+            active_ensemble_dim = next((x for x in self.possible_ensemble_dims if x in forecast.dims), None)
 
             if active_ensemble_dim:
                 num_ensemble = forecast[active_ensemble_dim].size
@@ -2734,7 +2751,7 @@ class SpatialFSS(BaseMetric):
                             f"Selected ensemble members ({self.selected_ensemble}) cannot exceed "
                             f"available members ({num_ensemble})."
                         )
-                    forecast = forecast.sel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
+                    forecast = forecast.isel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
                     print(f"Using selected ensemble size: {forecast[active_ensemble_dim].size}")
                 else:
                     print(f"No ensemble selected. Using all available members: {num_ensemble}")
@@ -2818,7 +2835,6 @@ class _HeatWaveBase(BaseMetric):
         threshold_offset: float = 5.0,     # degC / K above climatology (WMO: 5.0)
         min_consecutive_days: int = 5,     # WMO: 5 days
         time_dim: str = "valid_time",
-        debug: bool = False,
         **kwargs,
     ):
         super().__init__(name=name, **kwargs)
@@ -2826,7 +2842,6 @@ class _HeatWaveBase(BaseMetric):
         self.threshold_offset = threshold_offset
         self.min_consecutive_days = min_consecutive_days
         self.time_dim = time_dim
-        self.debug = debug
  
     # ------------------------------------------------------------------
     # helpers
@@ -2941,16 +2956,6 @@ class _HeatWaveBase(BaseMetric):
         # Points where both forecast and actual data exist (excludes missing / NaN areas)
         valid = actual_anomaly.notnull() & forecast_anomaly.notnull()
  
-        if self.debug:
-            print("forecast dims:", dict(forecast.sizes))
-            print("target dims  :", dict(target.sizes))
-            print("steps required:", n_steps, "| valid times available:", n_times)
-            print("frac anomaly > thr -> forecast:",
-                  float((forecast_anomaly > self.threshold_offset).mean()),
-                  "| actual:", float((actual_anomaly > self.threshold_offset).mean()))
-            print("heat-wave points -> forecast:", int(forecast_mask.sum()),
-                  "| actual:", int(actual_mask.sum()))
- 
         return forecast_mask, actual_mask, valid, pair_valid, ens_dim
  
     def _rate(self, flags: xr.DataArray, pair_valid, ens_dim: str) -> xr.DataArray:
@@ -2978,11 +2983,12 @@ class EnsembleHeatWaveDetectionRate(_HeatWaveBase):
     NaN means there was no actual heat wave to detect.
     """
  
-    def __init__(self, climatology, selected_ensemble: Optional[int] = None, name: str | None = None, **kwargs):
+    def __init__(self, climatology, selected_ensemble: Optional[int] = None, possible_ensemble_dims: Optional[list[str]] = None, name: str | None = None, **kwargs):
         if name is None:
             name = f"EnsembleHeatWaveDetectionRate_{selected_ensemble if selected_ensemble is not None else 'All'}"
         super().__init__(climatology=climatology, name=name, **kwargs)
         self.selected_ensemble = selected_ensemble
+        self.possible_ensemble_dims = possible_ensemble_dims if possible_ensemble_dims is not None else ["ensemble", "realization", "member", "ens"]
  
     def _compute_metric(
         self,
@@ -3012,11 +3018,12 @@ class EnsembleHeatWaveFalseAlarmRate(_HeatWaveBase):
     everywhere gets hit rate 1.0 but false alarm rate 1.0.
     """
  
-    def __init__(self, climatology, selected_ensemble: Optional[int] = None, name: str | None = None,  **kwargs):
+    def __init__(self, climatology, selected_ensemble: Optional[int] = None, possible_ensemble_dims: Optional[list[str]] = None, name: str | None = None,  **kwargs):
         if name is None:
             name = f"EnsembleHeatWaveFalseAlarmRate_{selected_ensemble if selected_ensemble is not None else 'All'}"
         super().__init__(climatology=climatology, name=name, **kwargs)
         self.selected_ensemble = selected_ensemble
+        self.possible_ensemble_dims = possible_ensemble_dims if possible_ensemble_dims is not None else ["ensemble", "realization", "member", "ens"]
  
     def _compute_metric(
         self,
@@ -3035,11 +3042,12 @@ class EnsembleHeatWaveFalseAlarmRate(_HeatWaveBase):
 class CoverOneSD(BaseMetric):
     """Compute the CoverOneSD metric (percentage of data within 1 standard deviation of the ensemble mean)."""
 
-    def __init__(self, selected_ensemble: Optional[int] = None, name: str| None = None, *args, **kwargs):
+    def __init__(self, selected_ensemble: Optional[int] = None, possible_ensemble_dims: Optional[list[str]] = None, name: str| None = None, *args, **kwargs):
         """Initialize the CoverOneSD metric.
 
         Args:
             selected_ensemble: Optional number of ensemble members to select.
+            possible_ensemble_dims: List of possible ensemble dimension names.
             name: The name of the metric. Defaults to "CoverOneSD".
             *args: Additional positional arguments passed to BaseMetric.
             **kwargs: Additional keyword arguments passed to BaseMetric.
@@ -3048,6 +3056,7 @@ class CoverOneSD(BaseMetric):
             name = f"CoverOneSD_{selected_ensemble if selected_ensemble is not None else 'All'}"
         super().__init__(name, *args, **kwargs)
         self.selected_ensemble = selected_ensemble
+        self.possible_ensemble_dims = possible_ensemble_dims if possible_ensemble_dims is not None else ["ensemble", "realization", "member", "ens"]
 
     def _compute_metric(
         self,
@@ -3067,11 +3076,9 @@ class CoverOneSD(BaseMetric):
         """
         
         percentage_cov = None
-        # Define common ensemble dimension names typically used in meteorological datasets
-        possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
         
         # Automatically check if any of the possible ensemble dimensions exist in the forecast data
-        active_ensemble_dim = next((dim for dim in possible_ensemble_dims if dim in forecast.dims), None)
+        active_ensemble_dim = next((dim for dim in self.possible_ensemble_dims if dim in forecast.dims), None)
         
         if active_ensemble_dim:
             num_ensemble = forecast.sizes[active_ensemble_dim]
@@ -3083,7 +3090,7 @@ class CoverOneSD(BaseMetric):
                 )
             elif self.selected_ensemble is not None:
                 # Select the subset of ensemble members using the dynamically detected dimension name
-                forecast = forecast.sel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
+                forecast = forecast.isel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
             
             # Compute the ensemble mean and standard deviation
             forecast_mean = forecast.mean(dim=active_ensemble_dim, skipna=True)
@@ -3102,19 +3109,21 @@ class CoverOneSD(BaseMetric):
 class MSESubEnsemble(BaseMetric):
     """Compute Mean Squared Error between forecast and target using subensembles."""
 
-    def __init__(self, selected_ensemble: Optional[int] = None, name: str| None = None, *args, **kwargs):
+    def __init__(self, selected_ensemble: Optional[int] = None, possible_ensemble_dims: Optional[list[str]] = None, name: str| None = None, *args, **kwargs):
         """Initialize the MSESubEnsemble metric.
 
         Args:
             selected_ensemble: Optional number of ensemble members to select.
+            possible_ensemble_dims: List of possible ensemble dimension names.
             name: The name of the metric. Defaults to generated name.
             *args: Additional positional arguments passed to BaseMetric.
             **kwargs: Additional keyword arguments passed to BaseMetric.
-        """
+        """ 
         if name is None:
             name = f"MSESubEnsemble_{selected_ensemble if selected_ensemble is not None else 'All'}"
         super().__init__(name, *args, **kwargs)
         self.selected_ensemble = selected_ensemble
+        self.possible_ensemble_dims = possible_ensemble_dims if possible_ensemble_dims is not None else ["ensemble", "realization", "member", "ens"]
 
     def _compute_metric(
         self,
@@ -3132,13 +3141,10 @@ class MSESubEnsemble(BaseMetric):
         Returns:
             The computed Mean Squared Error result.
         """
-       
-        
-        # Define common ensemble dimension names typically used in meteorological datasets
-        possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
+    
         
         # Automatically check if any of the possible ensemble dimensions exist in the forecast data
-        active_ensemble_dim = next((dim for dim in possible_ensemble_dims if dim in forecast.dims), None)
+        active_ensemble_dim = next((dim for dim in self.possible_ensemble_dims if dim in forecast.dims), None)
         
         if active_ensemble_dim:
             num_ensemble = forecast.sizes[active_ensemble_dim]
@@ -3150,7 +3156,7 @@ class MSESubEnsemble(BaseMetric):
                         f"or equal to available {num_ensemble} members."
                     )
                 # Select the subset of ensemble members using the dynamically detected dimension name
-                forecast = forecast.sel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
+                forecast = forecast.isel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
             
             # Compute the ensemble mean after subselection
             forecast_processed = forecast.mean(dim=active_ensemble_dim, skipna=True)
@@ -3168,6 +3174,7 @@ class RMSESubEnsemble(BaseMetric):
     def __init__(
         self,
         selected_ensemble: Optional[int] = None,
+        possible_ensemble_dims: Optional[list[str]] = None,
         name: str | None = None,
         *args,
         **kwargs,
@@ -3176,6 +3183,7 @@ class RMSESubEnsemble(BaseMetric):
 
         Args:
             selected_ensemble: Optional number of ensemble members to select.
+            possible_ensemble_dims: List of possible ensemble dimension names.
             name: The name of the metric. Defaults to auto-generated.
             *args: Additional positional arguments passed to BaseMetric.
             **kwargs: Additional keyword arguments passed to BaseMetric.
@@ -3185,6 +3193,7 @@ class RMSESubEnsemble(BaseMetric):
 
         super().__init__(name, *args, **kwargs)
         self.selected_ensemble = selected_ensemble
+        self.possible_ensemble_dims = possible_ensemble_dims if possible_ensemble_dims is not None else ["ensemble", "realization", "member", "ens"]
 
     def _compute_metric(
         self,
@@ -3202,11 +3211,8 @@ class RMSESubEnsemble(BaseMetric):
             The computed Root Mean Square Error result.
         """
         
-        # Define common ensemble dimension names typically used in meteorological datasets
-        possible_ensemble_dims = ["ensemble", "realization", "member", "ens"]
-        
         # Automatically check if any of the possible ensemble dimensions exist in the forecast data
-        active_ensemble_dim = next((dim for dim in possible_ensemble_dims if dim in forecast.dims), None)
+        active_ensemble_dim = next((dim for dim in self.possible_ensemble_dims if dim in forecast.dims), None)
         
         if active_ensemble_dim:
             num_ensemble = forecast.sizes[active_ensemble_dim]
@@ -3218,7 +3224,7 @@ class RMSESubEnsemble(BaseMetric):
                         f"or equal to available {num_ensemble} members."
                     )
                 # Select the subset of ensemble members using class attribute `self.selected_ensemble`
-                forecast = forecast.sel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
+                forecast = forecast.isel({active_ensemble_dim: range(1, self.selected_ensemble + 1)})
             
             # Compute the ensemble mean after subselection
             forecast_processed = forecast.mean(dim=active_ensemble_dim, skipna=True)

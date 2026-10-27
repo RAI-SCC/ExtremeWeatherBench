@@ -201,16 +201,7 @@ def remove_ocean_gridpoints(dataset: xr.Dataset) -> xr.Dataset:
     land_mask = land_sea_mask == 0
     # Subset the dataset to only include land gridpoints
     return dataset.where(land_mask)
-def read_event_yaml(input_pth: str | pathlib.Path) -> dict:
-    """Read events yaml from data."""
-    logger.warning(
-        "This function is deprecated and will be removed in a future release. "
-        "Please use cases.read_incoming_yaml instead."
-    )
-    input_pth = pathlib.Path(input_pth)
-    with open(input_pth, "rb") as f:
-        yaml_event_case = yaml.safe_load(f)
-    return yaml_event_case
+
 
 def derive_indices_from_init_time_and_lead_time(
     dataset: xr.Dataset,
@@ -533,6 +524,18 @@ def unstack_valid_time_pairs(
 
     When ``like`` is given, reindex onto its lead_time and valid_time so
     fill cells come back as NaN on the original dense grid.
+
+    Args:
+        obj (xr.Dataset | xr.DataArray): The input dataset or data array 
+            containing a flattened "sample" dimension to be unstacked.
+        like (xr.Dataset | xr.DataArray, optional): A reference dataset or 
+            data array whose "lead_time" and "valid_time" coordinates will 
+            be used for reindexing. Defaults to None.
+
+    Returns:
+        xr.Dataset | xr.DataArray: The unstacked dataset or data array 
+            restored to its original multi-index coordinate dimensions, 
+            with missing values filled as NaN if reindexed against ``like``.
     """
     if "sample" not in obj.dims:
         return obj
@@ -547,7 +550,17 @@ def convert_valid_time_to_init_time(da: xr.DataArray) -> xr.DataArray:
 
     Uses inner join to retain only the true forecast initialization time
     common to all lead times, eliminating ghost dates and dimension collisions.
+
+    Args:
+        da (xr.DataArray): The input DataArray containing "valid_time" 
+            and "lead_time" dimensions or coordinates.
+
+    Returns:
+        xr.DataArray: A new DataArray where the valid_time dimension 
+            has been swapped to an init_time coordinate/dimension using 
+            an inner join across all lead times.
     """
+
     # 1. Drop existing init_time coordinate if present to avoid name collisions
     if "init_time" in da.coords and "init_time" not in da.dims:
         da = da.drop_vars("init_time")
@@ -559,8 +572,6 @@ def convert_valid_time_to_init_time(da: xr.DataArray) -> xr.DataArray:
             lead_time_coord = lead_time_coord.astype("timedelta64[ns]")
         else:
             lead_time_coord = lead_time_coord * np.timedelta64(1, "h")
-    
-    
 
     # 3. Compute init_time coordinates (valid_time - lead_time)
     init_time = xr.DataArray(
@@ -568,6 +579,9 @@ def convert_valid_time_to_init_time(da: xr.DataArray) -> xr.DataArray:
     ) - xr.DataArray(lead_time_coord, coords={"lead_time": da.lead_time})
 
     da = da.assign_coords(init_time=init_time)
+    n_valid = da.sizes.get("valid_time", 0)
+    n_lead = da.sizes.get("lead_time", 0)
+    join_type = "inner" if n_valid == n_lead else "outer"
 
     # 4. Concatenate across lead_time using inner join:
     # This automatically retains ONLY the true init_time ('2020-02-01 00:00:00')
@@ -580,7 +594,7 @@ def convert_valid_time_to_init_time(da: xr.DataArray) -> xr.DataArray:
         "lead_time",
         coords="different",
         compat="equals",
-        join="inner",
+        join=join_type,
     )
 
     return res
