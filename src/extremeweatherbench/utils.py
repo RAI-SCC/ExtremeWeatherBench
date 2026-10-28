@@ -12,7 +12,7 @@ from typing import Any, Literal
 import geopandas as gpd
 import numpy as np
 import numpy.typing as npt
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd  
 import pooch
 import regionmask
 import shapely
