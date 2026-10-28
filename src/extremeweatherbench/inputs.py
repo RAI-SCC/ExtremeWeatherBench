@@ -19,6 +19,7 @@ import pandas as pd
 import polars as pl
 import xarray as xr
 import pathlib
+import urllib
 
 from extremeweatherbench import cases, derived, regions, sources, station_qc, utils
 

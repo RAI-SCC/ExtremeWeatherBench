@@ -170,11 +170,11 @@ def generate_tc_tracks_by_init_time(
         logger.warning("No TC track data matches forecast times - returning empty")
 
     # Transform data to have init_time as a dimension
-    slp_transformed = utils.convert_valid_time_to_init_time_updated(sea_level_pressure)
-    wind_transformed = utils.convert_valid_time_to_init_time_updated(wind_speed)
-    dz_transformed = utils.convert_valid_time_to_init_time_updated(geopotential_thickness)
-    u_transformed = utils.convert_valid_time_to_init_time_updated(u_wind)
-    v_transformed = utils.convert_valid_time_to_init_time_updated(v_wind)
+    slp_transformed = utils.convert_valid_time_to_init_time(sea_level_pressure)
+    wind_transformed = utils.convert_valid_time_to_init_time(wind_speed)
+    dz_transformed = utils.convert_valid_time_to_init_time(geopotential_thickness)
+    u_transformed = utils.convert_valid_time_to_init_time(u_wind)
+    v_transformed = utils.convert_valid_time_to_init_time(v_wind)
 
     # Create init_time_idx array for tracking
     n_init_times = len(slp_transformed.init_time)
