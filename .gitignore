@@ -22,7 +22,6 @@ site/
 *.nc
 *.h5
 *.zarr
-data/
 datasets/
 
 # Images and plots
