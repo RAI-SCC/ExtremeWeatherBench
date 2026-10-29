@@ -78,6 +78,7 @@ def generate_tc_tracks_by_init_time(
     max_spatial_distance_degrees: float = 5.0,
     max_temporal_hours: float = 48.0,
     use_contour_validation: bool = True,
+    use_contour_validation_fallback: bool = False,
     timestep_count_wind_minimum: int = 10,
     latitude_max_degrees: float = 50.0,
     surface_pressure_threshold: float = 101000.0,
@@ -119,6 +120,8 @@ def generate_tc_tracks_by_init_time(
         max_temporal_hours: Maximum temporal window from init_time in hours. Defaults
             to 48.0 hours
         use_contour_validation: Whether to use contour validation. Defaults to True
+        use_contour_validation_fallback: Whether to fall back to the non-contour-validated case when contour validation eliminates all possible cyclone center candidates.
+            Defaults to False.
         timestep_count_wind_minimum: Minimum number of lead times where the
             neighbourhood peak wind speed (max within wind_search_radius_degrees)
             is >= 10 m/s for a track to be considered valid. Defaults to 10
@@ -209,6 +212,7 @@ def generate_tc_tracks_by_init_time(
             "slp_contour_magnitude": slp_contour_magnitude,
             "dz_contour_magnitude": dz_contour_magnitude,
             "use_contour_validation": use_contour_validation,
+            "use_contour_validation_fallback": use_contour_validation_fallback,
             "timestep_count_wind_minimum": timestep_count_wind_minimum,
             "latitude_max_degrees": latitude_max_degrees,
             "surface_pressure_threshold": surface_pressure_threshold,
@@ -284,9 +288,8 @@ def _process_single_init_time(
     slp_data: npt.NDArray,  # (lead_time, lat, lon)
     wind_data: npt.NDArray,  # (lead_time, lat, lon)
     dz_data: npt.NDArray,  # (lead_time, lat, lon)
-    u_wind_data: npt.NDArray, # (lead_time, lat, lon)
-    v_wind_data: npt.NDArray, # (lead_time, lat, lon)
-    
+    u_wind_data: npt.NDArray,  # (lead_time, lat, lon)
+    v_wind_data: npt.NDArray,  # (lead_time, lat, lon)
     init_time_idx: int,
     init_time_values: npt.NDArray,  # Unique init_time values from transform
     init_time_coord: xr.DataArray,  # Original 2D init_time coordinate
@@ -300,6 +303,7 @@ def _process_single_init_time(
     slp_contour_magnitude: float,
     dz_contour_magnitude: float,
     use_contour_validation: bool,
+    use_contour_validation_fallback: bool,
     timestep_count_wind_minimum: int,
     latitude_max_degrees: float,
     surface_pressure_threshold: float,
@@ -331,6 +335,7 @@ def _process_single_init_time(
         slp_contour_magnitude: SLP contour threshold in Pa
         dz_contour_magnitude: DZ contour threshold in m
         use_contour_validation: Whether to use contour validation
+        use_contour_validation_fallback: Whether to fall back to the non-contour-validated case when contour validation eliminates all possible cyclone center candidates
         timestep_count_wind_minimum: Minimum lead times with neighbourhood peak wind
             >= 10 m/s for a track to be retained
         latitude_max_degrees: Maximum latitude for valid tracks in degrees
@@ -365,7 +370,6 @@ def _process_single_init_time(
     mask = np.abs(init_time_coord - current_init_time) <= np.timedelta64(1, "s")
     lead_time_indices, valid_time_indices = np.where(mask)
     valid_time_indices = np.arange(len(time_coord.valid_time.values))
-
 
     # Get valid times and sort by them
     valid_times = pd.to_datetime(
@@ -411,6 +415,7 @@ def _process_single_init_time(
             slp_contour_magnitude=slp_contour_magnitude,
             dz_contour_magnitude=dz_contour_magnitude,
             use_contour_validation=use_contour_validation,
+            use_contour_validation_fallback=use_contour_validation_fallback,
             surface_pressure_threshold=surface_pressure_threshold,
             latitude_max_degrees=latitude_max_degrees,
             max_gc_distance_slp_contour_degrees=max_gc_distance_slp_contour_degrees,
@@ -425,7 +430,7 @@ def _process_single_init_time(
                 "timestep_idx": timestep_idx,
                 "u_slice": u_slice,
                 "v_slice": v_slice,
-                "dz_slice": dz_slice
+                "dz_slice": dz_slice,
             }
         )
 
@@ -571,7 +576,7 @@ def _process_single_init_time(
         detections,
         slp_data,
         wind_data,
-        dz_data, 
+        dz_data,
         u_wind_data,
         v_wind_data,
         lead_time_indices_seq,
@@ -736,6 +741,7 @@ def _find_peaks_batch(
     slp_contour_magnitude: float,
     dz_contour_magnitude: float,
     use_contour_validation: bool,
+    use_contour_validation_fallback: bool,
     surface_pressure_threshold: float,
     latitude_max_degrees: float,
     max_gc_distance_slp_contour_degrees: float,
@@ -757,6 +763,7 @@ def _find_peaks_batch(
         slp_contour_magnitude: SLP contour magnitude in Pa
         dz_contour_magnitude: DZ contour magnitude in m
         use_contour_validation: Whether to use contour validation
+        use_contour_validation_fallback: Whether to fall back to the non-contour-validated case when contour validation eliminates all possible cyclone center candidates
         surface_pressure_threshold: Maximum surface pressure threshold for valid peaks
             in Pa
         latitude_max_degrees: Maximum latitude for valid tracks in degrees
@@ -789,6 +796,7 @@ def _find_peaks_batch(
         slp_contour_magnitude,
         dz_contour_magnitude,
         use_contour_validation,
+        use_contour_validation_fallback,
         is_first_timestep,
         surface_pressure_threshold,
         latitude_max_degrees,
@@ -810,6 +818,7 @@ def _find_peaks_for_time_slice(
     slp_contour_magnitude: float = 200.0,
     dz_contour_magnitude: float = -6.0,
     use_contour_validation: bool = True,
+    use_contour_validation_fallback: bool = False,
     is_first_timestep: bool = False,
     surface_pressure_threshold: float = 101000.0,
     latitude_max_degrees: float = 50.0,
@@ -837,6 +846,8 @@ def _find_peaks_for_time_slice(
         slp_contour_magnitude: SLP contour magnitude in Pa. Defaults to 200.0 Pa
         dz_contour_magnitude: DZ contour magnitude in m. Defaults to -6.0 m
         use_contour_validation: Whether to use contour validation. Defaults to True
+        use_contour_validation_fallback: Whether to fall back to the non-contour-validated case when contour validation eliminates all possible cyclone center candidates.
+            Defaults to False
         is_first_timestep: If True, applies temporal buffer. Defaults to False
         surface_pressure_threshold: Maximum surface pressure threshold for valid peaks
             in Pa. Defaults to 101000.0 Pa
@@ -941,9 +952,12 @@ def _find_peaks_for_time_slice(
             if candidate is not None:
                 validated_peaks.append(peak)
 
-        return (
-            np.array(validated_peaks) if validated_peaks else np.array([]).reshape(0, 2)
-        )
+        if validated_peaks or not use_contour_validation_fallback:
+            return (
+                np.array(validated_peaks)
+                if validated_peaks
+                else np.array([]).reshape(0, 2)
+            )
 
     return peaks
 
@@ -1131,7 +1145,6 @@ def _fill_track_gaps_from_fields(
             v_slice = np.squeeze(v_wind_data[_lt_idx])
             z_slice = np.squeeze(dz_data[_lt_idx])
 
-
             filled = {
                 "lead_time_index": int(_lt_idx),
                 "valid_time_index": int(valid_time_indices_seq[ts_idx]),
@@ -1160,8 +1173,8 @@ def _convert_detections_to_dataset(
     slp_vals: npt.NDArray,
     wind_vals: npt.NDArray,
     z_wind_vals: npt.NDArray,
-    u_wind_vals: npt.NDArray, 
-    v_wind_vals: npt.NDArray,  
+    u_wind_vals: npt.NDArray,
+    v_wind_vals: npt.NDArray,
     lead_time_coord: xr.DataArray,
     valid_time_coord: xr.DataArray,
 ) -> xr.Dataset:
