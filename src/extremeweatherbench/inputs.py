@@ -2,6 +2,8 @@ import abc
 import copy
 import dataclasses
 import logging
+import pathlib
+import urllib
 import warnings
 from collections.abc import Callable, Sequence
 from typing import (
@@ -18,8 +20,6 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import xarray as xr
-import pathlib
-import urllib
 
 from extremeweatherbench import cases, derived, regions, sources, station_qc, utils
 
@@ -1135,25 +1135,30 @@ class IBTrACS(TargetBase):
 
     def _open_data_from_source(self) -> IncomingDataInput:
         # Define the exact local cache path
-        cache_path = pathlib.Path("~/.cache/extremeweatherbench/ibtracs.ALL.list.v04r01.csv").expanduser()
+        cache_path = pathlib.Path(
+            "~/.cache/extremeweatherbench/ibtracs.ALL.list.v04r01.csv"
+        ).expanduser()
 
         # Check if local cache file exists and is fully downloaded (> 1 MB)
+        target_data: pl.LazyFrame
         if cache_path.exists() and cache_path.stat().st_size > 1_000_000:
             print(f"[INFO] Loading IBTrACS data from LOCAL CACHE: {cache_path}")
-            target_data: pl.LazyFrame = pl.scan_csv(
+            target_data = pl.scan_csv(
                 str(cache_path),
                 skip_rows_after_header=1,
             )
         else:
-            print(f"[INFO] Local cache not found. Fetching from internet source: {self.source}")
+            print(
+                f"[INFO] Local cache not found. Fetching from internet source: {self.source}"
+            )
             # Fallback to the original internet source if cache is missing
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             urllib.request.urlretrieve(self.source, cache_path)
             print(f"Data Successfully downloaded and saved {cache_path}")
-            target_data: pl.LazyFrame = pl.scan_csv(
+            target_data = pl.scan_csv(
                 str(cache_path),
-                #self.source,
-                #storage_options=self.storage_options,
+                # self.source,
+                # storage_options=self.storage_options,
                 skip_rows_after_header=1,
             )
 
